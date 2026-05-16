@@ -1,4 +1,4 @@
-// KICAU MATH - PLAYER MODE (Pakai lobby.png + Fallback)
+// KICAU MATH - PLAYER MODE (Track 7.450px, Kecepatan Dinamis)
 
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
@@ -19,14 +19,16 @@ let playerName = '';
 let imagesLoaded = false;
 let lobbyImageLoaded = false;
 
-// Konfigurasi
-const TRACK_LENGTH = 15000;
-const FINISH_LINE_X = 14950;
+// KONFIGURASI TRACK (7.450px)
+const TRACK_LENGTH = 7450;
+const FINISH_LINE_X = 7450;
+const START_X = 50;
 const CANVAS_WIDTH = 1024;
 const CANVAS_HEIGHT = 576;
 const MAX_SPEED = 200;
 const MIN_SPEED = 50;
 
+// Posisi Y untuk 10 pemain
 const BIRD_Y_POSITIONS = {
     1: 40, 2: 85, 3: 130, 4: 175, 5: 220,
     6: 265, 7: 310, 8: 355, 9: 400, 10: 445
@@ -38,13 +40,15 @@ const playerColors = {
 };
 
 let cameraX = 0;
+let targetCameraX = 0;
 let raceStartTime = 0;
 let playerAnswers = 0;
-let lastTimestamp = 0;
-let lastServerSend = 0;
 let currentFrame = 0;
 let lastFrameChange = 0;
 let leaderboardData = [];
+let lastLocalX = START_X;
+let lastUpdateTime = 0;
+let lastServerSend = 0;
 
 // Load gambar
 const images = { 
@@ -59,14 +63,13 @@ birdNames.forEach(name => {
 });
 
 let loadedCount = 0;
-const totalImages = 2 + (birdNames.length * 2); // sky + lobby + 20 gambar burung
+const totalImages = 2 + (birdNames.length * 2);
 
 function allImagesLoaded() {
     loadedCount++;
-    console.log(`Loaded: ${loadedCount}/${totalImages}`);
     if (loadedCount === totalImages) {
         imagesLoaded = true;
-        console.log('Semua gambar siap! lobby.png status:', lobbyImageLoaded);
+        console.log('✅ Semua gambar siap!');
         drawLobbyScreen();
         showNameInput();
     }
@@ -77,26 +80,15 @@ birdNames.forEach(name => {
     images[`bird_${name}_frame2`].src = `images/bird_${name}_frame2.png`;
     images[`bird_${name}_frame1`].onload = allImagesLoaded;
     images[`bird_${name}_frame2`].onload = allImagesLoaded;
-    images[`bird_${name}_frame1`].onerror = () => { console.warn(`Gagal load bird_${name}_frame1.png`); allImagesLoaded(); };
-    images[`bird_${name}_frame2`].onerror = () => { console.warn(`Gagal load bird_${name}_frame2.png`); allImagesLoaded(); };
+    images[`bird_${name}_frame1`].onerror = () => allImagesLoaded();
+    images[`bird_${name}_frame2`].onerror = () => allImagesLoaded();
 });
 
 images.sky.src = 'images/sky.png';
 images.lobby.src = 'images/lobby.png';
-
 images.sky.onload = allImagesLoaded;
-images.sky.onerror = () => { console.warn('Gagal load sky.png'); allImagesLoaded(); };
-
-images.lobby.onload = () => {
-    console.log('✅ lobby.png BERHASIL dimuat!');
-    lobbyImageLoaded = true;
-    allImagesLoaded();
-};
-images.lobby.onerror = () => {
-    console.warn('❌ Gagal load lobby.png, akan pakai fallback gradien');
-    lobbyImageLoaded = false;
-    allImagesLoaded();
-};
+images.lobby.onload = () => { lobbyImageLoaded = true; allImagesLoaded(); };
+images.lobby.onerror = () => allImagesLoaded();
 
 function getBirdImage(birdIndex) {
     const name = birdNames[birdIndex - 1] || 'red';
@@ -104,13 +96,10 @@ function getBirdImage(birdIndex) {
     return images[`bird_${name}_${frame}`];
 }
 
-// ========== TAMPILAN LOBBY (PAKAI lobby.png ATAU FALLBACK) ==========
 function drawLobbyScreen() {
     if (lobbyImageLoaded && images.lobby.complete && images.lobby.naturalWidth > 0) {
-        // TAMPILKAN lobby.png FULL CANVAS
         ctx.drawImage(images.lobby, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
     } else {
-        // FALLBACK: Gradien biru dengan tulisan
         const grad = ctx.createLinearGradient(0, 0, 0, CANVAS_HEIGHT);
         grad.addColorStop(0, '#1a5a8a');
         grad.addColorStop(0.5, '#3a8aca');
@@ -118,43 +107,12 @@ function drawLobbyScreen() {
         ctx.fillStyle = grad;
         ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
         
-        // Matahari
-        ctx.fillStyle = '#FFD700';
-        ctx.beginPath();
-        ctx.arc(80, 80, 45, 0, Math.PI * 2);
-        ctx.fill();
-        
-        // Awan
-        ctx.fillStyle = 'rgba(255,255,255,0.9)';
-        ctx.beginPath();
-        ctx.ellipse(250, 70, 50, 35, 0, 0, Math.PI*2);
-        ctx.ellipse(310, 60, 45, 35, 0, 0, Math.PI*2);
-        ctx.ellipse(200, 60, 45, 35, 0, 0, Math.PI*2);
-        ctx.fill();
-        
-        ctx.beginPath();
-        ctx.ellipse(750, 100, 55, 40, 0, 0, Math.PI*2);
-        ctx.ellipse(820, 90, 48, 40, 0, 0, Math.PI*2);
-        ctx.ellipse(690, 90, 48, 40, 0, 0, Math.PI*2);
-        ctx.fill();
-        
-        // Tulisan
         ctx.fillStyle = 'white';
-        ctx.font = 'bold 46px "Comic Sans MS", cursive';
-        ctx.shadowBlur = 8;
-        ctx.shadowColor = 'black';
-        ctx.fillText('🐦 KICAU MATH 🐦', CANVAS_WIDTH/2 - 220, CANVAS_HEIGHT/2 - 50);
-        ctx.font = '22px "Comic Sans MS", cursive';
-        ctx.fillText('Balapan Burung × Matematika', CANVAS_WIDTH/2 - 170, CANVAS_HEIGHT/2 + 10);
+        ctx.font = 'bold 36px "Comic Sans MS", cursive';
+        ctx.fillText('🐦 KICAU MATH 🐦', CANVAS_WIDTH/2 - 180, CANVAS_HEIGHT/2);
         ctx.font = '18px Arial';
         ctx.fillStyle = '#FFD700';
-        ctx.fillText('Menunggu spectator memulai game...', CANVAS_WIDTH/2 - 170, CANVAS_HEIGHT/2 + 70);
-        ctx.shadowBlur = 0;
-        
-        // Informasi fallback
-        ctx.font = '12px Arial';
-        ctx.fillStyle = '#ff6666';
-        ctx.fillText('lobby.png tidak ditemukan - menggunakan fallback', CANVAS_WIDTH/2 - 180, CANVAS_HEIGHT - 20);
+        ctx.fillText('Menunggu spectator memulai game...', CANVAS_WIDTH/2 - 180, CANVAS_HEIGHT/2 + 60);
     }
 }
 
@@ -197,20 +155,23 @@ function drawBird(x, y, birdIndex, isLocal, speed, name) {
     const img = getBirdImage(birdIndex);
     const size = 45;
     const screenX = x - cameraX;
-    if (screenX + size/2 < -50 || screenX - size/2 > CANVAS_WIDTH + 50) return;
+    
+    if (screenX + size/2 < -100 || screenX - size/2 > CANVAS_WIDTH + 100) return;
     
     if (img && img.complete && img.naturalWidth > 0) {
         if (isLocal && gameStarted && !winner) {
-            const bobY = Math.sin(Date.now() * 0.01) * 1.5;
+            const bobY = Math.sin(Date.now() * 0.008) * 2;
             ctx.drawImage(img, screenX - size/2, y - size/2 + bobY, size, size);
+            
             if (speed > 100) {
                 ctx.globalAlpha = 0.3;
                 for (let i = 1; i <= 2; i++) {
-                    ctx.drawImage(img, screenX - size/2 - (i * 8), y - size/2 + bobY, size, size);
+                    ctx.drawImage(img, screenX - size/2 - (i * 6), y - size/2 + bobY, size, size);
                 }
                 ctx.globalAlpha = 1;
             }
-            ctx.shadowBlur = 12;
+            
+            ctx.shadowBlur = 10;
             ctx.shadowColor = 'gold';
             ctx.drawImage(img, screenX - size/2, y - size/2 + bobY, size, size);
             ctx.shadowBlur = 0;
@@ -263,17 +224,60 @@ function drawLeaderboard() {
 
 function drawProgress() {
     if (!localPlayer || !gameStarted) return;
-    const p = localPlayer.x / FINISH_LINE_X;
+    const progress = Math.min(1, Math.max(0, (localPlayer.x - START_X) / (FINISH_LINE_X - START_X)));
     const bw = 180, bh = 14;
     const bx = CANVAS_WIDTH - bw - 15;
-    const by = 250;
-    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    const by = 255;
+    ctx.fillStyle = 'rgba(0,0,0,0.7)';
     ctx.fillRect(bx, by, bw, bh);
     ctx.fillStyle = '#4CAF50';
-    ctx.fillRect(bx, by, bw * p, bh);
+    ctx.fillRect(bx, by, bw * progress, bh);
     ctx.fillStyle = 'white';
     ctx.font = '10px Arial';
-    ctx.fillText(Math.floor(p * 100) + '%', bx + bw/2 - 15, by + 11);
+    ctx.fillText(Math.floor(progress * 100) + '%', bx + bw/2 - 15, by + 11);
+}
+
+function drawTimer() {
+    if (!gameStarted || winner) return;
+    const elapsed = (Date.now() - raceStartTime) / 1000;
+    const m = Math.floor(elapsed / 60);
+    const s = Math.floor(elapsed % 60);
+    const timeStr = (m > 0 ? m + ':' + (s < 10 ? '0' : '') : '') + s + 's';
+    
+    const baseX = CANVAS_WIDTH - 195;
+    const baseY = 280;
+    
+    ctx.fillStyle = 'rgba(0,0,0,0.7)';
+    ctx.fillRect(baseX, baseY, 185, 28);
+    ctx.fillStyle = 'white';
+    ctx.font = 'bold 14px monospace';
+    ctx.fillText('⏱️ ' + timeStr, baseX + 8, baseY + 20);
+}
+
+function drawAnswers() {
+    if (!gameStarted) return;
+    
+    const baseX = CANVAS_WIDTH - 195;
+    const baseY = 315;
+    
+    ctx.fillStyle = 'rgba(0,0,0,0.7)';
+    ctx.fillRect(baseX, baseY, 185, 28);
+    ctx.fillStyle = '#FFD700';
+    ctx.font = 'bold 13px Arial';
+    ctx.fillText('✅ Jawaban: ' + playerAnswers, baseX + 8, baseY + 20);
+}
+
+function drawSpeedInfo() {
+    if (!gameStarted || !localPlayer) return;
+    
+    const baseX = CANVAS_WIDTH - 195;
+    const baseY = 350;
+    
+    ctx.fillStyle = 'rgba(0,0,0,0.7)';
+    ctx.fillRect(baseX, baseY, 185, 28);
+    ctx.fillStyle = '#FFD700';
+    ctx.font = 'bold 13px Arial';
+    ctx.fillText('⚡ Kecepatan: ' + Math.floor(localPlayer.speed), baseX + 8, baseY + 20);
 }
 
 function updateLeaderboard() {
@@ -290,9 +294,11 @@ function updateLeaderboard() {
 
 function updateCamera() {
     if (!gameStarted || !localPlayer) return;
+    
     let target = localPlayer.x - CANVAS_WIDTH / 3.5;
     target = Math.max(0, Math.min(target, TRACK_LENGTH - CANVAS_WIDTH));
-    cameraX = cameraX + (target - cameraX) * 0.1;
+    targetCameraX = target;
+    cameraX = cameraX + (targetCameraX - cameraX) * 0.06;
 }
 
 function showNameInput() {
@@ -344,11 +350,18 @@ function connectToServer() {
         raceStartTime = Date.now();
         playerAnswers = 0;
         cameraX = 0;
+        targetCameraX = 0;
         currentFrame = 0;
         
         data.players.forEach(p => {
-            if (p.id === socket.id) localPlayer = p;
-            else otherPlayers[p.id] = p;
+            if (p.id === socket.id) {
+                localPlayer = p;
+                lastLocalX = p.x;
+            } else {
+                otherPlayers[p.id] = p;
+                otherPlayers[p.id].targetX = p.x;
+                otherPlayers[p.id].currentX = p.x;
+            }
         });
         
         socket.emit('request-question');
@@ -383,14 +396,23 @@ function connectToServer() {
         }
     });
     
+    socket.on('speed-decay', (data) => {
+        if (localPlayer) {
+            localPlayer.speed = data.newSpeed;
+            questionText.style.color = 'orange';
+            setTimeout(() => questionText.style.color = '#2c3e2f', 500);
+        }
+    });
+    
     socket.on('game-state', (data) => {
         if (gameStarted && !winner && data.players) {
             data.players.forEach(p => {
                 if (p.id === socket.id && localPlayer) {
                     localPlayer.x = p.x;
                     localPlayer.speed = p.speed;
+                    lastLocalX = p.x;
                 } else if (otherPlayers[p.id]) {
-                    otherPlayers[p.id].x = p.x;
+                    otherPlayers[p.id].targetX = p.x;
                     otherPlayers[p.id].speed = p.speed;
                 }
             });
@@ -412,11 +434,12 @@ function connectToServer() {
     });
 }
 
-let lastFrame = 0;
-let lastSend = 0;
+let lastFrameTime = 0;
+let lastServerSendTime = 0;
 
-function gameLoop(time) {
-    time = time || 0;
+function gameLoop(currentTime) {
+    currentTime = currentTime || 0;
+    
     if (!imagesLoaded) {
         drawLobbyScreen();
         requestAnimationFrame(gameLoop);
@@ -429,45 +452,66 @@ function gameLoop(time) {
         return;
     }
     
-    if (gameStarted && localPlayer && !winner) {
-        const dt = Math.min(0.033, (time - lastFrame) / 1000);
-        lastFrame = time;
-        localPlayer.x += localPlayer.speed * dt;
+    let deltaTime = Math.min(0.033, (currentTime - lastFrameTime) / 1000);
+    lastFrameTime = currentTime;
+    
+    if (localPlayer && !winner) {
+        localPlayer.x += localPlayer.speed * deltaTime;
         if (localPlayer.x > FINISH_LINE_X) localPlayer.x = FINISH_LINE_X;
         
-        if (time - lastSend > 100) {
+        if (currentTime - lastServerSendTime > 100) {
             socket.emit('position-update', { x: localPlayer.x });
-            lastSend = time;
+            lastServerSendTime = currentTime;
         }
-        
-        const now = Date.now();
-        let interval = Math.max(60, 200 - Math.floor(localPlayer.speed / 1.2));
-        if (now - lastFrameChange > interval) {
-            currentFrame = 1 - currentFrame;
-            lastFrameChange = now;
-        }
-        
-        updateCamera();
     }
+    
+    for (let id in otherPlayers) {
+        const p = otherPlayers[id];
+        if (p.targetX !== undefined) {
+            p.x = p.x + (p.targetX - p.x) * 0.25;
+        }
+    }
+    
+    const now = Date.now();
+    let frameInterval = 150;
+    if (localPlayer && localPlayer.speed) {
+        frameInterval = Math.max(60, 200 - Math.floor(localPlayer.speed / 1.5));
+    }
+    if (now - lastFrameChange > frameInterval) {
+        currentFrame = 1 - currentFrame;
+        lastFrameChange = now;
+    }
+    
+    updateCamera();
     
     drawGameBackground();
     drawFinishLine();
     
     for (let id in otherPlayers) {
         const p = otherPlayers[id];
-        if (p.x) drawBird(p.x, BIRD_Y_POSITIONS[p.birdIndex] || 220, p.birdIndex, false, p.speed, p.name);
+        if (p.x) {
+            const y = BIRD_Y_POSITIONS[p.birdIndex] || 220;
+            drawBird(p.x, y, p.birdIndex, false, p.speed, p.name);
+        }
     }
+    
     if (localPlayer && gameStarted) {
-        drawBird(localPlayer.x, BIRD_Y_POSITIONS[localPlayer.birdIndex] || 220, localPlayer.birdIndex, true, localPlayer.speed, localPlayer.name);
+        const y = BIRD_Y_POSITIONS[localPlayer.birdIndex] || 220;
+        drawBird(localPlayer.x, y, localPlayer.birdIndex, true, localPlayer.speed, localPlayer.name);
     }
     
     drawLeaderboard();
     drawProgress();
+    drawTimer();
+    drawAnswers();
+    drawSpeedInfo();
     
     if (winner && !gameStarted) {
         ctx.font = 'bold 32px Arial';
         ctx.fillStyle = 'gold';
+        ctx.shadowBlur = 8;
         ctx.fillText('🏆 ' + winner + ' MENANG! 🏆', CANVAS_WIDTH/2 - 160, 70);
+        ctx.shadowBlur = 0;
     }
     
     requestAnimationFrame(gameLoop);
@@ -493,10 +537,11 @@ answerInput.addEventListener('keypress', (e) => {
 
 function start() {
     if (imagesLoaded) {
-        console.log('🚀 PLAYER MODE READY');
+        console.log('🚀 PLAYER MODE READY - Track 7.450px');
         drawLobbyScreen();
     } else {
         setTimeout(start, 200);
     }
 }
+
 start();

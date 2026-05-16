@@ -1,4 +1,4 @@
-// KICAU MATH - SPECTATOR MODE (Pakai lobby.png + Fallback)
+// KICAU MATH - SPECTATOR MODE (Track 7.450px)
 
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
@@ -17,8 +17,10 @@ let spectatorName = '';
 let canStart = false;
 let lobbyImageLoaded = false;
 
-const TRACK_LENGTH = 15000;
-const FINISH_LINE_X = 14950;
+// KONFIGURASI TRACK (7.450px)
+const TRACK_LENGTH = 7450;
+const FINISH_LINE_X = 7450;
+const START_X = 50;
 const CANVAS_WIDTH = 1024;
 const CANVAS_HEIGHT = 576;
 
@@ -68,20 +70,9 @@ birdNames.forEach(name => {
 
 images.sky.src = 'images/sky.png';
 images.lobby.src = 'images/lobby.png';
-
 images.sky.onload = allImagesLoaded;
-images.sky.onerror = () => allImagesLoaded();
-
-images.lobby.onload = () => {
-    console.log('✅ lobby.png BERHASIL dimuat!');
-    lobbyImageLoaded = true;
-    allImagesLoaded();
-};
-images.lobby.onerror = () => {
-    console.warn('❌ Gagal load lobby.png, pakai fallback');
-    lobbyImageLoaded = false;
-    allImagesLoaded();
-};
+images.lobby.onload = () => { lobbyImageLoaded = true; allImagesLoaded(); };
+images.lobby.onerror = () => allImagesLoaded();
 
 let currentFrame = 0;
 let lastFrameChange = 0;
@@ -103,29 +94,14 @@ function drawLobbyScreen() {
         ctx.fillStyle = grad;
         ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
         
-        ctx.fillStyle = '#FFD700';
-        ctx.beginPath();
-        ctx.arc(80, 80, 45, 0, Math.PI * 2);
-        ctx.fill();
-        
-        ctx.fillStyle = 'rgba(255,255,255,0.9)';
-        ctx.beginPath();
-        ctx.ellipse(250, 70, 50, 35, 0, 0, Math.PI*2);
-        ctx.ellipse(310, 60, 45, 35, 0, 0, Math.PI*2);
-        ctx.ellipse(200, 60, 45, 35, 0, 0, Math.PI*2);
-        ctx.fill();
-        
         ctx.fillStyle = 'white';
-        ctx.font = 'bold 46px "Comic Sans MS", cursive';
-        ctx.shadowBlur = 8;
-        ctx.shadowColor = 'black';
-        ctx.fillText('🐦 KICAU MATH 🐦', CANVAS_WIDTH/2 - 220, CANVAS_HEIGHT/2 - 50);
+        ctx.font = 'bold 36px "Comic Sans MS", cursive';
+        ctx.fillText('🐦 KICAU MATH 🐦', CANVAS_WIDTH/2 - 180, CANVAS_HEIGHT/2);
         ctx.font = '22px "Comic Sans MS", cursive';
-        ctx.fillText('Mode PENGAWAS / SPECTATOR', CANVAS_WIDTH/2 - 170, CANVAS_HEIGHT/2 + 10);
+        ctx.fillText('Mode PENGAWAS / SPECTATOR', CANVAS_WIDTH/2 - 170, CANVAS_HEIGHT/2 + 50);
         ctx.font = '18px Arial';
         ctx.fillStyle = '#FFD700';
-        ctx.fillText('Tekan START GAME untuk memulai balapan!', CANVAS_WIDTH/2 - 190, CANVAS_HEIGHT/2 + 80);
-        ctx.shadowBlur = 0;
+        ctx.fillText('Tekan START GAME untuk memulai balapan!', CANVAS_WIDTH/2 - 190, CANVAS_HEIGHT/2 + 100);
         
         const playerCount = Object.keys(players).length;
         if (playerCount < 2 && !gameStarted) {
@@ -136,10 +112,6 @@ function drawLobbyScreen() {
             ctx.fillText(`Minimal 2 pemain untuk memulai game`, CANVAS_WIDTH/2 - 200, CANVAS_HEIGHT/2);
             ctx.fillText(`Saat ini: ${playerCount} pemain`, CANVAS_WIDTH/2 - 100, CANVAS_HEIGHT/2 + 40);
         }
-        
-        ctx.font = '12px Arial';
-        ctx.fillStyle = '#ff6666';
-        ctx.fillText('lobby.png tidak ditemukan - menggunakan fallback', CANVAS_WIDTH/2 - 180, CANVAS_HEIGHT - 20);
     }
 }
 
@@ -182,7 +154,7 @@ function drawBird(x, y, birdIndex, name) {
     const img = getBirdImage(birdIndex);
     const size = 45;
     const screenX = x - cameraX;
-    if (screenX + size/2 < -50 || screenX - size/2 > CANVAS_WIDTH + 50) return;
+    if (screenX + size/2 < -100 || screenX - size/2 > CANVAS_WIDTH + 100) return;
     
     if (img && img.complete && img.naturalWidth > 0) {
         ctx.drawImage(img, screenX - size/2, y - size/2, size, size);
@@ -391,7 +363,7 @@ function gameLoop(time) {
 
 function start() {
     if (imagesLoaded) {
-        console.log('🚀 SPECTATOR MODE READY');
+        console.log('🚀 SPECTATOR MODE READY - Track 7.450px');
         drawLobbyScreen();
     } else {
         setTimeout(start, 200);

@@ -1,4 +1,4 @@
-// KICAU MATH SERVER - 10 PLAYER + 1 SPECTATOR (SPECTATOR START GAME)
+// KICAU MATH SERVER - SISTEM KECEPATAN DINAMIS
 const http = require('http');
 const socketIo = require('socket.io');
 
@@ -17,20 +17,23 @@ let spectators = [];
 let gameStarted = false;
 let winner = null;
 let gameInterval = null;
+let speedDecayInterval = null;
 
 const MAX_SPEED = 200;
 const MIN_SPEED = 50;
 const SPEED_BONUS = 8;
-const SPEED_PENALTY = 5;
-const MAX_PLAYERS = 10;
+const SPEED_PENALTY = 2;
+const SPEED_DECAY = 1;
+const DECAY_INTERVAL = 2000; // 2 detik
+const TRACK_LENGTH = 7450;    // PANJANG LINTASAN
+const START_X = 50;
+const FINISH_X = 7450;
 
-// Warna untuk 10 pemain
 const colors = [
     '#FF4444', '#44FF44', '#FFAA44', '#4444FF', '#FF44FF',
     '#44FFFF', '#FF8844', '#88FF44', '#FF4488', '#44FF88'
 ];
 
-// Posisi Y untuk 10 pemain
 const BIRD_Y_POSITIONS = {
     1: 40, 2: 85, 3: 130, 4: 175, 5: 220,
     6: 265, 7: 310, 8: 355, 9: 400, 10: 445
@@ -106,7 +109,7 @@ function broadcastLeaderboard() {
     io.emit('leaderboard-update', {
         leaderboard: sortedPlayers.map((p, idx) => ({
             rank: idx + 1, name: p.name, speed: p.speed,
-            distance: Math.max(0, Math.floor((14950 - p.x) / 10)), color: p.color
+            distance: Math.max(0, Math.floor((FINISH_X - p.x) / 10)), color: p.color
         })),
         winner: winner
     });
@@ -119,8 +122,37 @@ function broadcastPlayersUpdate() {
     });
 }
 
+function startSpeedDecay() {
+    if (speedDecayInterval) clearInterval(speedDecayInterval);
+    
+    speedDecayInterval = setInterval(() => {
+        if (!gameStarted || winner) return;
+        
+        let anyChange = false;
+        players.forEach(player => {
+            if (player.speed > MIN_SPEED) {
+                const oldSpeed = player.speed;
+                player.speed = Math.max(MIN_SPEED, player.speed - SPEED_DECAY);
+                if (oldSpeed !== player.speed) {
+                    anyChange = true;
+                    console.log(`📉 ${player.name} kecepatan berkurang -${SPEED_DECAY} (${oldSpeed} → ${player.speed})`);
+                    io.to(player.id).emit('speed-decay', { 
+                        newSpeed: player.speed,
+                        message: `⚠️ Kecepatan berkurang -${SPEED_DECAY}! Jawab soal!`
+                    });
+                }
+            }
+        });
+        
+        if (anyChange) {
+            broadcastGameState();
+            broadcastLeaderboard();
+        }
+    }, DECAY_INTERVAL);
+}
+
 io.on('connection', (socket) => {
-    console.log('✅ Terhubung:', socket.id);
+    console.log('✅ Pemain terhubung:', socket.id);
     
     socket.on('join-as-player', (playerName, callback) => {
         if (gameStarted) {
@@ -128,7 +160,7 @@ io.on('connection', (socket) => {
             return;
         }
         
-        if (players.length >= MAX_PLAYERS) {
+        if (players.length >= 10) {
             callback({ success: false, message: 'Lobby pemain penuh (10/10)!' });
             return;
         }
@@ -137,7 +169,7 @@ io.on('connection', (socket) => {
             id: socket.id,
             name: playerName || 'Pemain ' + (players.length + 1),
             birdIndex: players.length + 1,
-            x: 50,
+            x: START_X,
             speed: MIN_SPEED,
             color: colors[players.length % colors.length]
         };
@@ -145,14 +177,14 @@ io.on('connection', (socket) => {
         players.push(player);
         playerQuestionsMap.set(socket.id, []);
         
-        console.log(`👤 PLAYER ${player.name} bergabung. Total: ${players.length}/${MAX_PLAYERS}`);
+        console.log(`👤 PLAYER ${player.name} bergabung. Total: ${players.length}/10`);
         
         callback({ 
             success: true, 
             role: 'player',
             playerData: player,
             players: players.map(p => ({ id: p.id, name: p.name, birdIndex: p.birdIndex, color: p.color })),
-            totalNeeded: MAX_PLAYERS,
+            totalNeeded: 10,
             currentCount: players.length
         });
         
@@ -181,13 +213,11 @@ io.on('connection', (socket) => {
         
         broadcastPlayersUpdate();
         
-        // Kirim info ke spectator bahwa dia bisa mulai game
         if (players.length >= 2) {
             io.to(socket.id).emit('can-start-game', { canStart: true, playerCount: players.length });
         }
     });
     
-    // ========== SPECTATOR MULAI GAME ==========
     socket.on('spectator-start-game', () => {
         const isSpectator = spectators.some(s => s.id === socket.id);
         if (!isSpectator) {
@@ -209,7 +239,6 @@ io.on('connection', (socket) => {
         console.log(`🎮 SPECTATOR ${spectators.find(s => s.id === socket.id)?.name} MEMULAI GAME!`);
         console.log(`👥 Total pemain: ${players.length}`);
         
-        // Kirim countdown ke semua
         io.emit('countdown', { message: 'Game akan dimulai oleh Spectator...', seconds: 3 });
         
         setTimeout(() => {
@@ -223,12 +252,12 @@ io.on('connection', (socket) => {
         gameStarted = true;
         winner = null;
         
-        console.log('🏁 GAME DIMULAI! 🏁');
-        console.log(`👥 ${players.length} pemain berlomba | 👁️ ${spectators.length} penonton`);
+        console.log('🏁 GAME DIMULAI! Track length: ' + (FINISH_X - START_X) + 'px 🏁');
+        console.log(`⚡ Sistem: +${SPEED_BONUS} (benar) | -${SPEED_PENALTY} (salah) | -${SPEED_DECAY}/2dt (otomatis)`);
         
         players.forEach(player => {
             playerQuestionsMap.set(player.id, []);
-            player.x = 50;
+            player.x = START_X;
             player.speed = MIN_SPEED;
             
             const firstQuestion = getRandomQuestionForPlayer(player.id);
@@ -248,6 +277,8 @@ io.on('connection', (socket) => {
             broadcastGameState();
             broadcastLeaderboard();
         }, 50);
+        
+        startSpeedDecay();
     }
     
     socket.on('request-question', () => {
@@ -275,17 +306,30 @@ io.on('connection', (socket) => {
             let newSpeed = player.speed + SPEED_BONUS;
             if (newSpeed > MAX_SPEED) newSpeed = MAX_SPEED;
             player.speed = newSpeed;
-            socket.emit('answer-result', { correct: true, message: `Benar! +${SPEED_BONUS}`, newSpeed: player.speed });
+            console.log(`✅ ${player.name} BENAR! Speed: ${player.speed} (+${SPEED_BONUS})`);
+            socket.emit('answer-result', { 
+                correct: true, 
+                message: `Benar! +${SPEED_BONUS}`,
+                newSpeed: player.speed
+            });
         } else {
             let newSpeed = player.speed - SPEED_PENALTY;
             if (newSpeed < MIN_SPEED) newSpeed = MIN_SPEED;
             player.speed = newSpeed;
-            socket.emit('answer-result', { correct: false, message: `Salah! -${SPEED_PENALTY}. Jawaban: ${currentQ.answer}`, newSpeed: player.speed });
+            console.log(`❌ ${player.name} SALAH! Speed: ${player.speed} (-${SPEED_PENALTY})`);
+            socket.emit('answer-result', { 
+                correct: false, 
+                message: `Salah! -${SPEED_PENALTY}. Jawaban: ${currentQ.answer}`,
+                newSpeed: player.speed
+            });
         }
         
         const newQuestion = getRandomQuestionForPlayer(socket.id);
         playerCurrentQuestion.set(socket.id, newQuestion);
         socket.emit('new-question', newQuestion);
+        
+        broadcastGameState();
+        broadcastLeaderboard();
     });
     
     socket.on('position-update', (data) => {
@@ -293,13 +337,14 @@ io.on('connection', (socket) => {
         if (player && gameStarted && !winner) {
             player.x = data.x;
             
-            if (data.x >= 14950 && !winner) {
+            if (data.x >= FINISH_X && !winner) {
                 winner = socket.id;
                 const winnerPlayer = players.find(p => p.id === socket.id);
                 console.log(`🏆 ${winnerPlayer.name} MENANG! 🏆`);
                 io.emit('game-end', { winner: winnerPlayer.name, winnerId: socket.id });
                 gameStarted = false;
                 if (gameInterval) clearInterval(gameInterval);
+                if (speedDecayInterval) clearInterval(speedDecayInterval);
                 
                 setTimeout(() => {
                     players = [];
@@ -331,6 +376,7 @@ io.on('connection', (socket) => {
         if (gameStarted) {
             gameStarted = false;
             if (gameInterval) clearInterval(gameInterval);
+            if (speedDecayInterval) clearInterval(speedDecayInterval);
             io.emit('game-stopped', { message: 'Game dihentikan karena ada pemain keluar' });
         }
     });
@@ -345,12 +391,16 @@ server.listen(PORT, () => {
     ║                                                              ║
     ║      Server: http://localhost:${PORT}                        ║
     ║                                                              ║
-    ║      👥 10 PLAYER + 1 SPECTATOR                             ║
-    ║      🎮 Pemain: Berlomba menjawab soal                      ║
-    ║      👁️ Spectator: MEMULAI GAME dengan tombol START         ║
+    ║      📏 Panjang lintasan: ${FINISH_X - START_X} px (${(FINISH_X - START_X)/1000} km)  ║
     ║                                                              ║
-    ║      ⚡ Benar: +${SPEED_BONUS} | Salah: -${SPEED_PENALTY}    ║
-    ║      📊 Minimal 2 pemain untuk mulai game                   ║
+    ║      ⚡ SISTEM KECEPATAN DINAMIS:                           ║
+    ║         ✅ Jawaban BENAR: +${SPEED_BONUS}                      ║
+    ║         ❌ Jawaban SALAH: -${SPEED_PENALTY}                    ║
+    ║         ⏰ Setiap 2 detik: -${SPEED_DECAY} (otomatis)          ║
+    ║         📉 Minimal: ${MIN_SPEED} | Maksimal: ${MAX_SPEED}       ║
+    ║                                                              ║
+    ║      🎮 Pemain HARUS terus menjawab untuk mempertahankan    ║
+    ║         kecepatan! Jika diam, kecepatan akan berkurang!     ║
     ║                                                              ║
     ╚══════════════════════════════════════════════════════════════╝
     `);
